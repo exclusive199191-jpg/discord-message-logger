@@ -1,20 +1,26 @@
 import os
+import sys
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.setLevel(logging.INFO)
 
 def get_db_connection():
     """Get database connection"""
     try:
         db_url = os.getenv('DATABASE_URL')
         if not db_url:
-            raise Exception("DATABASE_URL not set")
+            logger.warning("DATABASE_URL not set, using local fallback")
+            # Fallback for local development
+            db_url = 'postgresql://discord_logger:discord_password@localhost:5432/discord_logger'
         
-        conn = psycopg2.connect(db_url)
+        logger.info(f"Connecting to database...")
+        conn = psycopg2.connect(db_url, connect_timeout=5)
+        logger.info("Database connection successful")
         return conn
     except Exception as e:
         logger.error(f"Database connection error: {e}")
@@ -22,15 +28,16 @@ def get_db_connection():
 
 def init_db():
     """Initialize database with tables"""
+    logger.info("Initializing database...")
     conn = get_db_connection()
     if not conn:
-        logger.error("Failed to connect to database")
+        logger.error("Failed to connect to database for initialization")
         return
     
     cursor = conn.cursor()
     
     try:
-        # Create tables
+        # Create messages table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -44,11 +51,11 @@ def init_db():
                 server_name VARCHAR(255),
                 is_dm BOOLEAN DEFAULT FALSE,
                 timestamp TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT unique_message UNIQUE(user_id, channel_id, timestamp)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
+        # Create users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -60,10 +67,11 @@ def init_db():
             )
         """)
         
+        # Create sessions table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id SERIAL PRIMARY KEY,
-                discord_id BIGINT NOT NULL,
+                discord_id BIGINT UNIQUE NOT NULL,
                 token_hash VARCHAR(255) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -75,46 +83,12 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_channel_id ON messages(channel_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_server_id ON messages(server_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_content ON messages USING GIN(to_tsvector('english', content))")
         
         conn.commit()
         logger.info("Database initialized successfully")
         
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
-
-async def save_message(user_id, username, display_name, content, channel_id, channel_name, server_id, server_name, timestamp, is_dm):
-    """Save message to database"""
-    conn = get_db_connection()
-    if not conn:
-        return
-    
-    cursor = conn.cursor()
-    
-    try:
-        # Insert or update user
-        cursor.execute("""
-            INSERT INTO users (discord_id, username, display_name, last_seen)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (discord_id) DO UPDATE
-            SET username = %s, display_name = %s, last_seen = CURRENT_TIMESTAMP
-        """, (user_id, username, display_name, username, display_name))
-        
-        # Insert message
-        cursor.execute("""
-            INSERT INTO messages (user_id, username, display_name, content, channel_id, channel_name, server_id, server_name, is_dm, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (user_id, channel_id, timestamp) DO NOTHING
-        """, (user_id, username, display_name, content, channel_id, channel_name, server_id, server_name, is_dm, timestamp))
-        
-        conn.commit()
-        
-    except Exception as e:
-        logger.error(f"Error saving message: {e}")
         conn.rollback()
     finally:
         cursor.close()
@@ -135,6 +109,7 @@ def get_all_users():
             LEFT JOIN messages m ON u.discord_id = m.user_id
             GROUP BY u.id, u.discord_id, u.username, u.display_name
             ORDER BY message_count DESC
+            LIMIT 100
         """)
         
         results = cursor.fetchall()

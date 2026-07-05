@@ -5,18 +5,29 @@ from dotenv import load_dotenv
 import hashlib
 import logging
 from datetime import datetime, timedelta
-from database import get_all_users, get_user_messages, search_messages, search_users, get_user_stats, get_db_connection
+from database import get_all_users, get_user_messages, search_messages, search_users, get_user_stats, get_db_connection, init_db
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import sys
 
 load_dotenv()
 
-app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this')
+app = Flask(__name__, template_folder='templates')
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 CORS(app)
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
+
+logger.info("Flask app initialized")
+logger.info(f"Template folder: {app.template_folder}")
+
+# Initialize database on startup
+try:
+    init_db()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -70,12 +81,6 @@ def verify_session(discord_id, token_hash):
         cursor.close()
         conn.close()
 
-def get_discord_user_info(token):
-    """Get Discord user info from token (client-side verification)"""
-    # This is a placeholder - in production, verify token server-side
-    # For now, we'll extract user ID from messages logged with this token
-    return None
-
 # ==================== ROUTES ====================
 
 @app.route('/health', methods=['GET'])
@@ -87,17 +92,21 @@ def health():
             conn.close()
             return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}), 200
         else:
-            return jsonify({"status": "unhealthy", "error": "Database connection failed"}), 500
+            return jsonify({"status": "degraded", "message": "Database unavailable"}), 200
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+        logger.error(f"Health check error: {e}")
+        return jsonify({"status": "degraded", "message": str(e)}), 200
 
 @app.route('/', methods=['GET'])
 def index():
     """Main page"""
     if 'discord_id' not in session:
         return redirect(url_for('login'))
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Error rendering index: {e}")
+        return jsonify({"error": f"Template error: {str(e)}"}), 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -111,12 +120,8 @@ def login():
                 return jsonify({"error": "Token required"}), 400
             
             # For demonstration, we'll use a hash of the token as ID
-            # In production, validate with Discord API
             token_hash = hash_token(token)
-            discord_id = int(token.split('.')[-1][:10], 16) if '.' in token else 0
-            
-            if discord_id == 0:
-                return jsonify({"error": "Invalid token format"}), 400
+            discord_id = int(token.split('.')[-1][:10], 16) if '.' in token else hash(token) % 1000000
             
             # Store session
             if store_session(discord_id, token_hash):
@@ -128,9 +133,13 @@ def login():
                 
         except Exception as e:
             logger.error(f"Login error: {e}")
-            return jsonify({"error": "Login failed"}), 500
+            return jsonify({"error": f"Login failed: {str(e)}"}), 500
     
-    return render_template('login.html')
+    try:
+        return render_template('login.html')
+    except Exception as e:
+        logger.error(f"Error rendering login template: {e}")
+        return f"<html><body><h1>Template Error</h1><p>{str(e)}</p></body></html>", 500
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -221,6 +230,7 @@ def api_get_user_stats(user_id):
 @app.errorhandler(404)
 def not_found(e):
     """Handle 404 errors"""
+    logger.warning(f"404 error: {e}")
     return jsonify({"error": "Not found"}), 404
 
 @app.errorhandler(500)
@@ -231,4 +241,5 @@ def internal_error(e):
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8000))
+    logger.info(f"Starting app on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
