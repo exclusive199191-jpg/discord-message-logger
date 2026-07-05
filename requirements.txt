@@ -1,0 +1,11 @@
+discord.py==2.3.2
+Flask==3.0.0
+Flask-CORS==4.0.0
+psycopg2-binary==2.9.9
+PyJWT==2.8.1
+python-dotenv==1.0.0
+requests==2.31.0
+Werkzeug==3.0.1
+gunicorn==21.2.0
+alembic==1.12.1
+SQLAlchemy==2.0.23
