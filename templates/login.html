@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Discord Message Logger{% endblock %}
+
+{% block custom_styles %}
+<style>
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+    }
+    
+    .login-card {
+        background: white;
+        border-radius: 15px;
+        padding: 40px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        width: 100%;
+        max-width: 400px;
+    }
+    
+    .login-card h1 {
+        color: #667eea;
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    
+    .login-card p {
+        text-align: center;
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 14px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+    }
+    
+    input[type="password"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+    
+    input[type="password"]:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+    
+    .login-button {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .login-button:hover {
+        transform: translateY(-2px);
+    }
+    
+    .login-button:active {
+        transform: translateY(0);
+    }
+    
+    .help-text {
+        font-size: 12px;
+        color: #999;
+        margin-top: 10px;
+        text-align: center;
+    }
+    
+    .help-text a {
+        color: #667eea;
+        text-decoration: none;
+    }
+    
+    .help-text a:hover {
+        text-decoration: underline;
+    }
+    
+    .alert {
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        font-size: 14px;
+    }
+    
+    .alert-error {
+        background: #fee;
+        color: #c33;
+        border: 1px solid #fcc;
+    }
+    
+    .alert-success {
+        background: #efe;
+        color: #3c3;
+        border: 1px solid #cfc;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <h1>🔐 Discord Logger</h1>
+        <p>Enter your Discord user token to get started</p>
+        
+        <div id="message"></div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="token">Discord User Token</label>
+                <input 
+                    type="password" 
+                    id="token" 
+                    name="token" 
+                    placeholder="Paste your Discord token here" 
+                    required
+                    autocomplete="off"
+                >
+            </div>
+            
+            <button type="submit" class="login-button">Login</button>
+            
+            <div class="help-text">
+                <strong>⚠️ WARNING:</strong> Never share your token with anyone!<br>
+                Token is only used to log messages sent by you.
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const token = document.getElementById('token').value;
+        const messageDiv = document.getElementById('message');
+        
+        if (!token) {
+            messageDiv.innerHTML = '<div class="alert alert-error">Please enter your token</div>';
+            return;
+        }
+        
+        try {
+            messageDiv.innerHTML = '<div class="alert alert-success">Logging in...</div>';
+            
+            const response = await fetchAPI('/login', {
+                method: 'POST',
+                body: JSON.stringify({ token })
+            });
+            
+            if (response.status === 'success') {
+                messageDiv.innerHTML = '<div class="alert alert-success">Login successful! Redirecting...</div>';
+                setTimeout(() => {
+                    window.location.href = response.redirect;
+                }, 1000);
+            } else {
+                messageDiv.innerHTML = `<div class="alert alert-error">Error: ${response.error}</div>`;
+            }
+        } catch (error) {
+            messageDiv.innerHTML = `<div class="alert alert-error">Login failed: ${error.message}</div>`;
+        }
+    });
+</script>
+{% endblock %}

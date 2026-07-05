@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Discord Message Logger{% endblock %}
+
+{% block custom_styles %}
+<style>
+    .dashboard {
+        display: grid;
+        grid-template-columns: 1fr 3fr;
+        gap: 20px;
+        min-height: calc(100vh - 200px);
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .sidebar {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    
+    .sidebar h2 {
+        color: #667eea;
+        margin-bottom: 15px;
+        font-size: 18px;
+    }
+    
+    .search-box {
+        margin-bottom: 20px;
+    }
+    
+    .search-box input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        font-size: 14px;
+    }
+    
+    .user-list {
+        list-style: none;
+    }
+    
+    .user-item {
+        padding: 12px;
+        margin-bottom: 10px;
+        background: #f5f5f5;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.3s;
+        border-left: 4px solid transparent;
+    }
+    
+    .user-item:hover {
+        background: #e8e8ff;
+        border-left-color: #667eea;
+    }
+    
+    .user-item.active {
+        background: #e8e8ff;
+        border-left-color: #667eea;
+    }
+    
+    .user-name {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .user-count {
+        font-size: 12px;
+        color: #999;
+    }
+    
+    .main-content {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .content-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .content-header h2 {
+        color: #667eea;
+        font-size: 22px;
+    }
+    
+    .stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .stat {
+        background: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .stat-label {
+        font-size: 12px;
+        color: #999;
+        margin-top: 5px;
+    }
+    
+    .search-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 5px;
+    }
+    
+    .search-section h3 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 16px;
+    }
+    
+    .search-controls {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .search-controls input {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    
+    .search-controls button {
+        padding: 10px 20px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    
+    .messages-list {
+        margin-top: 20px;
+    }
+    
+    .message {
+        padding: 15px;
+        margin-bottom: 10px;
+        background: #f9f9f9;
+        border-left: 4px solid #667eea;
+        border-radius: 5px;
+    }
+    
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    
+    .message-author {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .message-channel {
+        font-size: 12px;
+        color: #999;
+    }
+    
+    .message-time {
+        font-size: 12px;
+        color: #999;
+    }
+    
+    .message-content {
+        color: #555;
+        line-height: 1.5;
+        word-break: break-word;
+    }
+    
+    .message-search-highlight {
+        background: yellow;
+        font-weight: bold;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #667eea;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header>
+    <h1>📊 Discord Message Logger</h1>
+    <div class="nav-buttons">
+        <button onclick="location.reload()">Refresh</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+</header>
+
+<div class="dashboard">
+    <div class="sidebar">
+        <div class="search-box">
+            <input type="text" id="userSearch" placeholder="Search users..." onkeyup="searchUsers()">
+        </div>
+        <h2>Users</h2>
+        <ul class="user-list" id="userList">
+            <li style="text-align: center; color: #999;">Loading...</li>
+        </ul>
+    </div>
+    
+    <div class="main-content">
+        <div id="content">
+            <div class="empty-state">
+                <p>Select a user from the list to view their messages</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedUserId = null;
+    let allUsers = [];
+    
+    async function loadUsers() {
+        try {
+            const users = await fetchAPI('/api/users');
+            allUsers = users;
+            displayUsers(users);
+        } catch (error) {
+            console.error('Error loading users:', error);
+            document.getElementById('userList').innerHTML = '<li style="color: red;">Error loading users</li>';
+        }
+    }
+    
+    function displayUsers(users) {
+        const userList = document.getElementById('userList');
+        if (users.length === 0) {
+            userList.innerHTML = '<li style="text-align: center; color: #999;">No users found</li>';
+            return;
+        }
+        
+        userList.innerHTML = users.map(user => `
+            <li class="user-item" onclick="selectUser(${user.discord_id}, '${user.display_name || user.username}')">
+                <div class="user-name">${user.display_name || user.username}</div>
+                <div class="user-count">${user.message_count} messages</div>
+            </li>
+        `).join('');
+    }
+    
+    async function searchUsers() {
+        const query = document.getElementById('userSearch').value;
+        if (!query) {
+            displayUsers(allUsers);
+            return;
+        }
+        
+        try {
+            const results = await fetchAPI(`/api/users/search?q=${encodeURIComponent(query)}`);
+            displayUsers(results);
+        } catch (error) {
+            console.error('Error searching users:', error);
+        }
+    }
+    
+    async function selectUser(userId, userName) {
+        selectedUserId = userId;
+        
+        // Update active state
+        document.querySelectorAll('.user-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        event.target.closest('.user-item').classList.add('active');
+        
+        // Load user data
+        try {
+            const [messages, stats] = await Promise.all([
+                fetchAPI(`/api/users/${userId}/messages?limit=50`),
+                fetchAPI(`/api/users/${userId}/stats`)
+            ]);
+            
+            displayUserContent(userName, messages, stats);
+        } catch (error) {
+            console.error('Error loading user content:', error);
+            document.getElementById('content').innerHTML = '<div style="color: red;">Error loading user content</div>';
+        }
+    }
+    
+    function displayUserContent(userName, messages, stats) {
+        let html = `
+            <div class="content-header">
+                <h2>${userName}</h2>
+            </div>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value">${stats.total_messages || 0}</div>
+                    <div class="stat-label">Total Messages</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${stats.channels || 0}</div>
+                    <div class="stat-label">Channels</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${stats.servers || 0}</div>
+                    <div class="stat-label">Servers</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">${stats.last_message ? new Date(stats.last_message).toLocaleDateString() : 'N/A'}</div>
+                    <div class="stat-label">Last Message</div>
+                </div>
+            </div>
+            
+            <div class="search-section">
+                <h3>Search Messages</h3>
+                <div class="search-controls">
+                    <input type="text" id="messageSearch" placeholder="Find exact words in messages...">
+                    <button onclick="searchUserMessages()">Search</button>
+                </div>
+            </div>
+        `;
+        
+        if (messages.length === 0) {
+            html += '<div class="empty-state">No messages found</div>';
+        } else {
+            html += '<div class="messages-list">';
+            html += messages.map(msg => `
+                <div class="message">
+                    <div class="message-header">
+                        <span class="message-author">${msg.display_name || msg.username}</span>
+                        <span>
+                            <span class="message-channel">#${msg.channel_name}</span>
+                            <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
+                        </span>
+                    </div>
+                    <div class="message-content">${escapeHtml(msg.content)}</div>
+                </div>
+            `).join('');
+            html += '</div>';
+        }
+        
+        document.getElementById('content').innerHTML = html;
+    }
+    
+    async function searchUserMessages() {
+        const query = document.getElementById('messageSearch').value;
+        if (!query || !selectedUserId) return;
+        
+        try {
+            const results = await fetchAPI(`/api/messages/search?q=${encodeURIComponent(query)}&user_id=${selectedUserId}`);
+            
+            let html = '<div class="messages-list">';
+            if (results.length === 0) {
+                html = '<div class="empty-state">No messages match your search</div>';
+            } else {
+                html += results.map(msg => `
+                    <div class="message" style="background: #fffbcc;">
+                        <div class="message-header">
+                            <span class="message-author">${msg.display_name || msg.username}</span>
+                            <span>
+                                <span class="message-channel">#${msg.channel_name}</span>
+                                <span class="message-time">${new Date(msg.timestamp).toLocaleString()}</span>
+                            </span>
+                        </div>
+                        <div class="message-content">${highlightText(msg.content, query)}</div>
+                    </div>
+                `).join('');
+                html += '</div>';
+            }
+            
+            document.querySelector('.messages-list').innerHTML = html;
+        } catch (error) {
+            console.error('Error searching messages:', error);
+        }
+    }
+    
+    function highlightText(text, query) {
+        const regex = new RegExp(`(${query})`, 'gi');
+        return escapeHtml(text).replace(regex, '<span class="message-search-highlight">$1</span>');
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    async function logout() {
+        try {
+            await fetchAPI('/logout', { method: 'POST' });
+            window.location.href = '/login';
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    }
+    
+    // Load users on page load
+    loadUsers();
+</script>
+{% endblock %}
